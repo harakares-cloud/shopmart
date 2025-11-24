@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { TrendingUp, Tag } from 'lucide-react';
 import { SearchBar } from '../components/SearchBar';
 import { ProductCard } from '../components/ProductCard';
+import { CategoryFilter } from '../components/CategoryFilter';
 import { supabase } from '../lib/supabase';
 import { Product, PriceData } from '../types';
 
@@ -11,25 +12,28 @@ export function Home() {
   const [priceDataMap, setPriceDataMap] = useState<Record<string, PriceData[]>>({});
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('All');
 
   useEffect(() => {
     loadProducts();
   }, []);
 
-  const loadProducts = async () => {
+  const loadProducts = async (category?: string) => {
     setLoading(true);
     try {
-      const { data: productsData } = await supabase
+      let productsQuery = supabase.from('products').select('*');
+      let trendingQuery = supabase
         .from('products')
         .select('*')
-        .order('created_at', { ascending: false });
+        .eq('is_trending', true);
 
-      const { data: trendingData } = await supabase
-        .from('products')
-        .select('*')
-        .eq('is_trending', true)
-        .order('rating', { ascending: false })
-        .limit(100);
+      if (category && category !== 'All') {
+        productsQuery = productsQuery.eq('category', category);
+        trendingQuery = trendingQuery.eq('category', category);
+      }
+
+      const { data: productsData } = await productsQuery.order('created_at', { ascending: false });
+      const { data: trendingData } = await trendingQuery.order('rating', { ascending: false }).limit(100);
 
       const { data: pricesData } = await supabase
         .from('price_data')
@@ -58,20 +62,32 @@ export function Home() {
   const handleSearch = async (query: string) => {
     setSearchQuery(query);
     if (!query.trim()) {
-      loadProducts();
+      loadProducts(selectedCategory);
       return;
     }
 
     try {
-      const { data } = await supabase
+      let searchQuery = supabase
         .from('products')
         .select('*')
         .ilike('name', `%${query}%`);
+
+      if (selectedCategory !== 'All') {
+        searchQuery = searchQuery.eq('category', selectedCategory);
+      }
+
+      const { data } = await searchQuery;
 
       if (data) setProducts(data);
     } catch (error) {
       console.error('Error searching products:', error);
     }
+  };
+
+  const handleCategoryChange = (category: string) => {
+    setSelectedCategory(category);
+    setSearchQuery('');
+    loadProducts(category);
   };
 
   return (
@@ -88,6 +104,8 @@ export function Home() {
             <SearchBar onSearch={handleSearch} />
           </div>
         </div>
+
+        <CategoryFilter selectedCategory={selectedCategory} onCategoryChange={handleCategoryChange} />
 
         <div className="mb-16">
           <div className="bg-gradient-to-r from-orange-500 to-pink-500 rounded-2xl p-8 text-white shadow-xl">
